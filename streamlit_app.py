@@ -9,6 +9,9 @@ import streamlit as st
 import whisper
 import time
 from speak import speak_text
+from rank_bm25 import BM25Okapi
+from langchain_community.retrievers import BM25Retriever    
+
 
 st. set_page_config(page_title="AI PDF Chatbot", page_icon="🤖")
 @st.cache_resource
@@ -27,6 +30,12 @@ def load_llm():
 def create_vector_db(chunks):
     embedding= load_embedding()
     return FAISS.from_documents(documents=chunks,embedding=embedding)
+
+@st.cache_resource
+def create_bm25_retriever(chunks):
+    retriever = BM25Retriever.from_documents(chunks)
+    retriever.k = 3
+    return retriever
 
 st.title("🤖AI PDF Chatbot")
 if "message" not in st.session_state:
@@ -64,6 +73,7 @@ if uploaded_files:
     st.success("✅Embedding Model Loaded Successfully!")
    
     vector_db = create_vector_db(chunks)
+    bm25_retriever = create_bm25_retriever(chunks)
     
     st.success("✅ FAISS Database Created Successfully!")
     st.markdown("---")
@@ -89,8 +99,27 @@ if uploaded_files:
         with st.chat_message("user"):
             st.markdown(query)
 
-        retriever = vector_db.as_retriever(search_kwargs={"k": 3})
-        results = retriever.invoke(query)
+        # FAISS Search
+        faiss_retriever = vector_db.as_retriever(search_kwargs={"k":3})
+        faiss_results = faiss_retriever.invoke(query)
+
+# BM25 Search
+        bm25_results = bm25_retriever.invoke(query)
+          # Merge FAISS + BM25 results
+        combined_results = faiss_results + bm25_results
+
+        # Remove duplicate chunks
+        seen = set()
+        results = []
+
+        for doc in combined_results:
+            text = doc.page_content
+
+            if text not in seen:
+                seen.add(text)
+                results.append(doc)
+
+
         context = "\n\n".join([doc.page_content for doc in results])
         source_info = []
         source_pages = []
