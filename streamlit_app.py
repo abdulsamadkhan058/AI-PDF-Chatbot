@@ -1635,41 +1635,6 @@ else:
         unsafe_allow_html=True,
     )
 
-    # MOBILE-SAFE MICROPHONE
-    #
-    # st.chat_input's built-in audio recorder lives inside Streamlit's
-    # fixed bottom bar, which on some mobile browsers/Streamlit versions
-    # ends up positioned behind the browser's own UI and becomes
-    # invisible/unreachable — a documented Streamlit issue
-    # (streamlit/streamlit#11891, #11722, #14152), not something in this
-    # app. streamlit_mic_recorder (third-party custom component) was
-    # tried here as a fallback but was confirmed to also not render on
-    # mobile (Chrome and Firefox), which points to that component itself
-    # failing to load rather than a layout issue. st.audio_input is
-    # Streamlit's own native, first-party microphone widget (not a
-    # custom iframe component), so it doesn't depend on third-party JS
-    # loading correctly, and it lives here in the normal page flow near
-    # the top of the chat area rather than the fixed bottom bar, so it
-    # is unaffected by that positioning bug too. It does not remove or
-    # replace the chat_input microphone; it's an additional, reliable
-    # way to record.
-    mic_audio_value = st.audio_input(
-        "🎙️ Record a voice question",
-        key="mobile_mic_audio_input",
-    )
-
-    if mic_audio_value is not None:
-        mic_audio_bytes = mic_audio_value.getvalue()
-        # st.audio_input keeps returning the same recording on every
-        # rerun until the user records a new one, so fingerprint it and
-        # only transcribe/handle a given recording once.
-        mic_audio_fingerprint = hashlib.sha1(mic_audio_bytes).hexdigest()
-        if st.session_state.get("last_mic_audio_fingerprint") != mic_audio_fingerprint:
-            st.session_state["last_mic_audio_fingerprint"] = mic_audio_fingerprint
-            with st.status("🎙️ Transcribing your recording…", expanded=False):
-                mic_text = transcribe_audio(mic_audio_bytes)
-            if mic_text:
-                handle_query(mic_text)
 
 # CHAT HISTORY
 for message_index, message in enumerate(
