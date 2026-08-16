@@ -1,9 +1,13 @@
+@"
+.env
+venv/
 __pycache__/
 *.pyc
-venv/
-.env
-uploads/
 faiss_db/
-chunks.pkl
-pdf_info.pkl
-chat_history.db
+uploads/
+database/
+*.db
+*.pkl
+app_backup.py
+test_*.py
+"@ | Out-File -Encoding utf8 .gitignore
