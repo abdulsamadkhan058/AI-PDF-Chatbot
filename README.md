@@ -42,20 +42,30 @@ streamlit run streamlit_app.py
 
 Use **PDF Only** first.
 
-1. English:
-   `what is iqama status?`
-2. Follow-up:
-   `is it transferable?`
-3. Urdu:
-   `سالانہ چھٹیوں کی پالیسی کیا ہے؟`
-4. Roman Urdu:
-   `meri chuttiyon ki policy kya hai?`
-5. Arabic:
-   `ما هي سياسة الإجازة السنوية؟`
+Recommended Tests
 
+Start with PDF Only.
+
+English:
+What is the annual leave policy?
+
+Follow-up:
+How many days of annual leave are provided?
+
+Urdu:
+سالانہ چھٹیوں کی پالیسی کیا ہے؟
+
+Roman Urdu:
+Meri annual leave ki policy kya hai?
+
+Arabic:
+ما هي سياسة الإجازة السنوية؟
+
+Source Verification:
 Check that Sources contain only the document/page used for the final context.
 
-If a question is not supported by the PDF, the assistant should refuse instead of inventing an answer.
+Grounding Test:
+Ask a question that is not supported by the uploaded PDF. The assistant should refuse instead of inventing an answer.
 
 ## Fresh indexing
 
