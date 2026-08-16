@@ -12,7 +12,6 @@ import tempfile
 import time
 import edge_tts
 from urllib.parse import urlparse
-
 import streamlit as st
 import whisper
 from ddgs import DDGS
@@ -330,6 +329,28 @@ def inject_css():
     .features { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.7rem; margin-top:1.8rem; }
     .feature { padding:.8rem; border:1px solid #173e6b; border-radius:13px; background:#07162d; color:#d8e8ff !important; }
     .feature b { display:block; color:white !important; margin-bottom:.25rem; }
+
+    /* Mobile browsers resize their own UI (address bar / bottom nav bar)
+       as the page scrolls, which changes the *actual* visible viewport
+       height without firing a resize the app can react to. Streamlit's
+       chat input is pinned using the viewport height, so on some mobile
+       browsers/Streamlit versions it (and its microphone icon) end up
+       positioned behind that browser UI and become invisible/unreachable
+       (see streamlit/streamlit#11891, #11722, #14152). Forcing dvh
+       ("dynamic viewport height") here, plus the safe-area inset, keeps
+       the fixed bottom chat bar and hero bar aligned to the real visible
+       area instead of the stale 100vh value.
+    */
+    @supports (height: 100dvh) {
+        [data-testid="stAppViewContainer"], [data-testid="stMain"],
+        [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {
+            min-height: auto;
+        }
+        .stApp { min-height: 100dvh !important; }
+    }
+    [data-testid="stBottomBlockContainer"], [data-testid="stChatInputContainer"] {
+        padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+    }
 
     @media (max-width:768px) {
         :root { --hero-h:5.7rem; }
@@ -1025,8 +1046,49 @@ def internet_fallback(query, language, target, status):
     return answer, sources
 
 def handle_query(query):
+    
     query = normalize_text(query)
     if not query:
+        return
+
+    if "vector_db" not in st.session_state:
+        language = detect_language(query)
+
+        st.session_state.messages.append({
+            "role": "user",
+            "content": query,
+            "sources": [],
+        })
+        save_message("user", query, [])
+
+        with st.chat_message("user", avatar=USER_AVATAR):
+            render_answer(
+                st.empty(),
+                query,
+                language,
+            )
+
+        answer = refusal(language)
+
+        with st.chat_message("assistant", avatar=BOT_AVATAR):
+            render_answer(
+                st.empty(),
+                answer,
+                language,
+                [],
+            )
+
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+            "sources": [],
+        })
+        save_message("assistant", answer, [])
+        st.session_state.memory.add_message(
+            query,
+            answer,
+        )
+
         return
 
     language = detect_language(query)
@@ -1140,7 +1202,7 @@ def handle_query(query):
                 render_read_aloud(
                     answer,
                     language,
-                    unique_id=f"live_{len(st.session_state.messages)}",
+                    unique_id=f"live_{time.time_ns()}",
                 )
 
             else:
@@ -1177,9 +1239,9 @@ def handle_query(query):
                 render_read_aloud(
                     answer,
                     language,
-                    unique_id=f"live_{len(st.session_state.messages)}",
-        )
-        
+                    unique_id=f"live_{time.time_ns()}",
+                )
+                        
     
         st.caption(f"⏱️ {time.time() - start:.1f}s")
 
@@ -1211,12 +1273,38 @@ def transcribe_audio(data):
             fp16=False,
             temperature=0,
             condition_on_previous_text=False,
-            initial_prompt=(
-                "AI PDF Chatbot. PDF question. Iqama status, transferable, "
-                "English, Urdu, Arabic, and Roman Urdu."
-            ),
         )
-        return normalize_text(result.get("text", ""))
+
+        text = normalize_text(result.get("text", ""))
+        if not text:
+            return ""
+
+        # Silence / hallucination guard.
+        # Whisper reports per-segment `no_speech_prob` (confidence that a
+        # segment contains no speech), `avg_logprob` (confidence in the
+        # decoded tokens), and `compression_ratio` (how repetitive the
+        # decoded text is — this is the same statistic Whisper's own
+        # decoder uses internally to flag a failed/looping decode, with
+        # 2.4 being Whisper's own default threshold). On silent audio,
+        # Whisper sometimes doesn't just emit nothing — it can loop a
+        # short phrase (often drawn straight from initial_prompt) over
+        # and over, which looks like real text but is highly repetitive
+        # and is caught by the compression_ratio check even when
+        # no_speech_prob/avg_logprob alone don't flag it.
+        segments = result.get("segments") or []
+
+        def segment_is_bad(seg):
+            silence_like = (
+                seg.get("no_speech_prob", 0.0) > 0.6
+                and seg.get("avg_logprob", 0.0) < -1.0
+            )
+            repetitive = seg.get("compression_ratio", 0.0) > 2.4
+            return silence_like or repetitive
+
+        if segments and all(segment_is_bad(seg) for seg in segments):
+            return ""
+
+        return text
     except Exception as exc:
         st.error(f"Voice transcription failed: {exc}")
         return ""
@@ -1286,21 +1374,19 @@ def text_to_speech(text, language):
         )
         return None
     
-def render_read_aloud(text, language, unique_id=None):
+def render_read_aloud(text, language, unique_id):
     if not text:
         return
 
     text = str(text).strip()
 
-    # Same answer + same language = same audio
-    audio_hash = hashlib.sha1(
-        f"{language}:{text}".encode("utf-8")
+    text_hash = hashlib.sha1(
+        text.encode("utf-8")
     ).hexdigest()
 
-    button_key = f"read_aloud_{audio_hash}"
-    audio_key = f"audio_{audio_hash}"
-
-    # Audio already exists
+    button_key = f"read_aloud_{unique_id}_{text_hash[:12]}"
+    audio_key = f"audio_{unique_id}_{text_hash[:12]}"
+    # Audio already generated
     if audio_key in st.session_state:
         audio_data = st.session_state[audio_key]
 
@@ -1313,7 +1399,7 @@ def render_read_aloud(text, language, unique_id=None):
 
         return
 
-    # Generate audio with ONE click
+    # Generate on first click
     if st.button(
         "🔊 Read aloud",
         key=button_key,
@@ -1337,17 +1423,21 @@ def render_read_aloud(text, language, unique_id=None):
                 st.error("❌ Generated audio is empty.")
                 return
 
-            # IMPORTANT:
-            # Store using a key that does NOT depend on unique_id
+            # Save audio
             st.session_state[audio_key] = audio_data
 
+            # Show audio immediately
+            st.audio(
+                audio_data,
+                format="audio/mp3",
+                autoplay=False,
+            )
+
+            # Remove temp file
             try:
                 os.remove(audio_path)
             except OSError:
                 pass
-
-            # Rerun so the saved audio is displayed
-            st.rerun()
 
         except Exception as exc:
             st.error(
@@ -1545,6 +1635,42 @@ else:
         unsafe_allow_html=True,
     )
 
+    # MOBILE-SAFE MICROPHONE
+    #
+    # st.chat_input's built-in audio recorder lives inside Streamlit's
+    # fixed bottom bar, which on some mobile browsers/Streamlit versions
+    # ends up positioned behind the browser's own UI and becomes
+    # invisible/unreachable — a documented Streamlit issue
+    # (streamlit/streamlit#11891, #11722, #14152), not something in this
+    # app. streamlit_mic_recorder (third-party custom component) was
+    # tried here as a fallback but was confirmed to also not render on
+    # mobile (Chrome and Firefox), which points to that component itself
+    # failing to load rather than a layout issue. st.audio_input is
+    # Streamlit's own native, first-party microphone widget (not a
+    # custom iframe component), so it doesn't depend on third-party JS
+    # loading correctly, and it lives here in the normal page flow near
+    # the top of the chat area rather than the fixed bottom bar, so it
+    # is unaffected by that positioning bug too. It does not remove or
+    # replace the chat_input microphone; it's an additional, reliable
+    # way to record.
+    mic_audio_value = st.audio_input(
+        "🎙️ Record a voice question",
+        key="mobile_mic_audio_input",
+    )
+
+    if mic_audio_value is not None:
+        mic_audio_bytes = mic_audio_value.getvalue()
+        # st.audio_input keeps returning the same recording on every
+        # rerun until the user records a new one, so fingerprint it and
+        # only transcribe/handle a given recording once.
+        mic_audio_fingerprint = hashlib.sha1(mic_audio_bytes).hexdigest()
+        if st.session_state.get("last_mic_audio_fingerprint") != mic_audio_fingerprint:
+            st.session_state["last_mic_audio_fingerprint"] = mic_audio_fingerprint
+            with st.status("🎙️ Transcribing your recording…", expanded=False):
+                mic_text = transcribe_audio(mic_audio_bytes)
+            if mic_text:
+                handle_query(mic_text)
+
 # CHAT HISTORY
 for message_index, message in enumerate(
     st.session_state.messages
@@ -1578,12 +1704,10 @@ for message_index, message in enumerate(
                 message["content"],
                 language,
                 unique_id=message_index,
-    )
+        )
 
-
-# =========================
 # CHAT INPUT
-# =========================
+
 try:
     prompt = st.chat_input(
         "Ask about your PDFs, or use the microphone…",
