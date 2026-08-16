@@ -1521,7 +1521,7 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button("➕ New Chat"):
+    if st.button("🗑️ Clear Chat"):
         clear_history()
         st.session_state.messages = []
         st.session_state.memory = ConversationMemory()
