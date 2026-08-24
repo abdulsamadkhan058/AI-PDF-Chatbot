@@ -2,22 +2,11 @@
 
 import os
 from functools import lru_cache
+from dotenv import load_dotenv
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
-try:
-    import streamlit as st
-except ImportError:
-    st = None
-
-
-def _cache(func):
-    if st is not None:
-        return st.cache_resource(
-            show_spinner="🧠 Loading multilingual embedding model…"
-        )(func)
-
-    return lru_cache(maxsize=1)(func)
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 
 def _get_env(name, default):
@@ -32,7 +21,7 @@ def _get_env(name, default):
     return value or default
 
 
-@_cache
+@lru_cache(maxsize=1)
 def load_embedding():
     model_name = _get_env(
         "AI_PDF_EMBEDDING_MODEL",
@@ -63,11 +52,5 @@ def load_embedding():
             "Failed to load embedding model "
             f"'{model_name}' on device '{device}': {exc}"
         )
-
-        if st is not None:
-            st.error(f"❌ {message}")
-
-        else:
-            print(f"❌ {message}")
-
+        print(f"❌ {message}")
         return None

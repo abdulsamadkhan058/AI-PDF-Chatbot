@@ -7,19 +7,23 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from google import genai
 
-try:
-    import streamlit as st
-except ImportError:
-    st = None
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=False)
+
+def _get_api_key():
+    # Google documents GEMINI_API_KEY and GOOGLE_API_KEY; if both exist,
+    # GOOGLE_API_KEY takes precedence. Support both so deployment is flexible.
+    key = (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or "").strip()
+    if not key or key.lower() in {"your_gemini_api_key_here", "your_api_key_here", "changeme"}:
+        return None
+    return key
 
 
-load_dotenv()
-
-
-def _cache(func):
-    if st is not None:
-        return st.cache_resource(show_spinner=False)(func)
-    return lru_cache(maxsize=1)(func)
+# Public alias so other modules (app.py's chart/vision call) use the exact
+# same GOOGLE_API_KEY/GEMINI_API_KEY resolution as normal text answers,
+# instead of duplicating (and risking drifting from) this lookup.
+get_api_key = _get_api_key
 
 
 class GeminiChatModel(BaseChatModel):
@@ -35,19 +39,23 @@ class GeminiChatModel(BaseChatModel):
         run_manager=None,
         **kwargs,
     ):
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = _get_api_key()
 
         if not api_key:
             raise RuntimeError(
-                "GEMINI_API_KEY not found in .env"
+                "Gemini API key is not configured. Add GEMINI_API_KEY (or GOOGLE_API_KEY) to the project .env file, then restart Chainlit."
             )
 
         client = genai.Client(api_key=api_key)
 
         prompt = self._messages_to_text(messages)
 
+        model = (
+            os.getenv("AI_PDF_GEMINI_MODEL", "gemini-3.6-flash").strip()
+            or "gemini-3.6-flash"
+        )
         interaction = client.interactions.create(
-            model="gemini-3.5-flash",
+            model=model,
             input=prompt,
         )
 
@@ -93,23 +101,21 @@ class GeminiChatModel(BaseChatModel):
         then emitted as one AIMessage chunk.
         """
 
-        result = self.invoke(
+        yield self.invoke(
             input,
             config=config,
             stop=stop,
             **kwargs,
         )
 
-        yield result
 
-
-@_cache
+@lru_cache(maxsize=1)
 def load_llm():
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = _get_api_key()
 
     if not api_key:
         raise RuntimeError(
-            "GEMINI_API_KEY not found in .env"
+            "Gemini API key is not configured. Add GEMINI_API_KEY (or GOOGLE_API_KEY) to the project .env file, then restart Chainlit."
         )
 
     return GeminiChatModel()

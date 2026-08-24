@@ -507,6 +507,40 @@ def retrieve_documents(
     )
 
     if not all_candidates:
+        # Last-resort local fallback: if FAISS/BM25 returned nothing,
+        # search the already-indexed chunks directly. This is important for
+        # small PDFs and for queries whose wording differs from the PDF.
+        # It still remains fully grounded because every returned document
+        # comes from the uploaded PDF chunks.
+        try:
+            fallback_scored = []
+            for index, doc in enumerate(chunks):
+                try:
+                    overlap, coverage, lexical_score = _lexical_score(
+                        rewritten,
+                        getattr(doc, "page_content", ""),
+                    )
+                    fallback_scored.append(
+                        (lexical_score, overlap, coverage, -index, doc)
+                    )
+                except Exception:
+                    continue
+
+            if fallback_scored:
+                fallback_scored.sort(reverse=True)
+                fallback = [item[4] for item in fallback_scored[:max(final_k, retrieval_k)]]
+                fallback = deduplicate_documents(fallback)
+                if fallback:
+                    try:
+                        fallback = rerank_documents(
+                            rewritten, fallback, top_k=final_k
+                        ) or fallback
+                    except Exception:
+                        pass
+                    return rewritten, fallback[:final_k]
+        except Exception:
+            pass
+
         return rewritten, []
 
     # 5. Group candidates by PDF
@@ -568,8 +602,11 @@ def retrieve_documents(
             except Exception:
                 continue
 
-        # automatically select an unrelated PDF.
-
+        # Prefer lexical evidence when it exists, but do not reject a
+        # semantically retrieved PDF just because the user used different
+        # words or another language (for example, "chutti" vs "leave").
+        # FAISS/BM25 already supplied these candidates, so keeping them is
+        # still grounded in the uploaded PDFs.
         relevant, _, _ = (
             _document_relevance(
                 rewritten,
@@ -578,15 +615,17 @@ def retrieve_documents(
         )
 
         if not relevant:
-            continue
-
-        source_score = (
-            best_lexical_score
-            + 0.20 * min(
-                best_overlap,
-                10,
+            # Keep semantic/lexical candidates as a fallback. They are ranked
+            # later by candidate count and original retrieval order.
+            source_score = 0.0
+        else:
+            source_score = (
+                best_lexical_score
+                + 0.20 * min(
+                    best_overlap,
+                    10,
+                )
             )
-        )
 
         source_scores.append(
             (
@@ -597,6 +636,8 @@ def retrieve_documents(
                 docs,
             )
         )
+
+        continue
 
     # 8. No evidence found
 

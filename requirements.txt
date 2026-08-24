@@ -1,15 +1,30 @@
-streamlit>=1.52
+# --- UI ---------------------------------------------------------------
+chainlit==2.11.1
+
+# --- Core RAG (unchanged from the Streamlit app) -----------------------
 langchain-community>=0.3
+langchain-core>=0.3
 langchain-text-splitters>=0.3
 langchain-huggingface>=0.1
-langchain-ollama>=0.2
 sentence-transformers>=3
 faiss-cpu>=1.8
 rank-bm25>=0.2
 pypdf>=5
 numpy>=1.26
-openai-whisper>=20240930
-ddgs>=9
 python-dotenv>=1.0
+
+# --- LLM (Gemini) -------------------------------------------------------
+google-genai>=0.3
 langchain-google-genai>=2.0
+
+# --- Web fallback --------------------------------------------------------
+ddgs>=9
+
+# --- Voice (Whisper input + Edge TTS read-aloud) -------------------------
+openai-whisper>=20240930
 edge-tts>=7.0
+
+# --- Table / chart analysis (new) ----------------------------------------
+pdfplumber>=0.11
+pandas>=2.0
+PyMuPDF>=1.24

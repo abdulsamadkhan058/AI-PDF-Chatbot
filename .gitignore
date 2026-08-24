@@ -8,6 +8,9 @@ uploads/
 database/
 *.db
 *.pkl
-app_backup.py
 test_*.py
 "@ | Out-File -Encoding utf8 .gitignore
+.venv/
+chunks.pkl
+pdf_info.pkl
+index_meta.json

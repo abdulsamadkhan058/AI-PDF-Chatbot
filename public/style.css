@@ -1,0 +1,245 @@
+/* AI PDF Chatbot — production UI shell (Chainlit 2.11 DOM) */
+:root {
+  --ai-bg: #050d1d;
+  --ai-panel: rgba(8, 22, 48, .96);
+  --ai-border: rgba(111, 163, 255, .16);
+  --ai-blue: #3b82f6;
+  --ai-blue-2: #2563eb;
+  --ai-text: #f6f9ff;
+  --ai-muted: #8fa8cf;
+  --ai-danger: #ef6b7a;
+  --ai-sidebar: 292px;
+  --ai-header: 72px;
+}
+
+html, body { background: var(--ai-bg) !important; color: var(--ai-text) !important; }
+body {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(37,99,235,.14), transparent 32%),
+    radial-gradient(circle at 88% 8%, rgba(59,130,246,.08), transparent 26%),
+    var(--ai-bg) !important;
+}
+
+/* Never show system/bridge marker messages in the transcript. Kept in the
+   DOM (not removed) so the sidebar can still trigger their action buttons. */
+.ai-hidden-step { display: none !important; }
+
+/* Native Chainlit header (a div#header, not a <header> tag) becomes the
+   stable sticky branded app header. */
+#header.ai-native-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 3000 !important;
+  height: var(--ai-header) !important;
+  min-height: var(--ai-header) !important;
+  padding: 0 !important;
+  background: rgba(4, 12, 27, .92) !important;
+  border-bottom: 1px solid var(--ai-border) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.ai-native-header-hidden { display: none !important; }
+.ai-app-header-inner { height: 100%; display: flex; align-items: center; padding: 0 24px; gap: 18px; }
+.ai-app-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ai-brand-logo { width: 40px; height: 40px; object-fit: contain; border-radius: 12px; box-shadow: 0 8px 24px rgba(37,99,235,.18); }
+.ai-brand-copy { display: grid; gap: 2px; }
+.ai-brand-copy strong { font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+.ai-brand-copy span { color: var(--ai-muted); font-size: 12px; }
+.ai-header-status { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.ai-status-pill { border: 1px solid rgba(96,165,250,.20); background: rgba(37,99,235,.08); color: #cfe0ff; padding: 7px 12px; border-radius: 999px; font-size: 12px; white-space: nowrap; }
+.ai-status-pill i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #54d48a; margin-right: 6px; }
+.ai-mobile-menu { display: none; border: 1px solid var(--ai-border); background: rgba(13,37,80,.8); color: white; width: 40px; height: 40px; border-radius: 11px; font-size: 18px; flex: 0 0 auto; cursor: pointer; }
+.ai-header-actions { display: flex; align-items: center; gap: 4px; }
+.ai-header-actions button { color: #cfe0ff !important; }
+
+main { background: transparent !important; }
+/* Give the conversation room for the permanent desktop sidebar, and keep
+   the whole chat column (messages + composer) centered with breathing
+   room instead of flush against the sidebar edge. */
+@media (min-width: 761px) {
+  main { margin-left: var(--ai-sidebar) !important; padding: 0 28px !important; box-sizing: border-box !important; }
+}
+
+/* Each chat turn renders as a `.step` wrapper with data-step-type. */
+.step { background: transparent !important; margin-bottom: 4px !important; animation: ai-fade .18s ease-out both; }
+.ai-message { max-width: min(880px, 92vw); margin-left: auto !important; margin-right: auto !important; }
+
+/* Normalize the (otherwise huge, Tailwind `prose-xl`) message text. */
+.prose {
+  font-size: 15px !important;
+  line-height: 1.7 !important;
+  max-width: none !important;
+  color: var(--ai-text) !important;
+}
+.prose :is(h1, h2, h3) { color: #fff !important; }
+.prose a { color: #86b9ff !important; }
+.prose code { background: rgba(0,0,0,.28) !important; border: 1px solid rgba(255,255,255,.08); border-radius: 7px; padding: .12em .35em; }
+.prose pre { background: rgba(2,10,25,.86) !important; border: 1px solid rgba(96,165,250,.14); border-radius: 14px; }
+
+/* Both sides render as plain text — no bubble/box/pill at all, like
+   ChatGPT's main chat screen. We flatten every wrapper div that contains
+   the message's `.prose` content (any nesting level Chainlit uses), but we
+   never touch elements *inside* `.prose` itself — that's the actual
+   markdown output (tables, code blocks, source lists) which should keep
+   its own styling untouched. */
+[data-step-type="user_message"] div:has(.prose),
+[data-step-type="assistant_message"] div:has(.prose) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+[data-step-type="user_message"] div:has(> .prose),
+[data-step-type="assistant_message"] div:has(> .prose) {
+  padding: 10px 2px !important;
+}
+[data-step-type="user_message"] .prose,
+[data-step-type="assistant_message"] .prose {
+  font-weight: 500;
+}
+
+/* A hairline divider between turns replaces the old boxes, so consecutive
+   messages still read as separate turns in a flat, plain flow. */
+[data-step-type="user_message"],
+[data-step-type="assistant_message"] {
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid rgba(255,255,255,.045) !important;
+}
+
+/* Avatars: force the wrapping container AND the image to the exact same
+   square size (instead of styling only the <img>), because Chainlit's own
+   avatar container can otherwise clip/squash the image differently than
+   the size we set on it, which is what made avatars look scaled/cropped
+   oddly. */
+.step:has(> img[src*="/avatars/"]),
+.step *:has(> img[src*="/avatars/"]) {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+}
+.step img[src*="/avatars/"] {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  flex: 0 0 auto !important;
+  box-shadow: 0 4px 14px rgba(0,10,30,.3);
+}
+
+/* Composer: the real input is #chat-input inside #message-composer. Center
+   it as its own column (matching the message width) instead of stretching
+   flush against the sidebar. */
+#message-composer {
+  background: rgba(9,24,51,.94) !important;
+  border: 1px solid rgba(83,142,239,.48) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 14px 42px rgba(0,12,40,.32) !important;
+  max-width: min(880px, 92vw) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+#message-composer:focus-within {
+  border-color: rgba(104,165,255,.85) !important;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12), 0 16px 44px rgba(0,12,40,.40) !important;
+}
+#chat-input {
+  box-sizing: border-box !important;
+  color: #f8fbff !important;
+  text-indent: 0 !important;
+  transform: none !important;
+  padding-left: 2px !important;
+  line-height: 1.5 !important;
+}
+#chat-input::placeholder { color: #88a4cf !important; }
+
+button[type="submit"], #chat-input ~ div button:last-child { background: linear-gradient(135deg, #2563eb, #3b82f6) !important; }
+
+/* Custom desktop workspace sidebar — the only place for app controls. */
+.ai-workspace-sidebar {
+  position: fixed; left: 0; top: var(--ai-header); bottom: 0; z-index: 4500; width: var(--ai-sidebar); box-sizing: border-box;
+  padding: 22px 16px 16px; display: flex; flex-direction: column; gap: 10px;
+  background: linear-gradient(180deg, rgba(7,22,49,.99), rgba(3,12,29,.995)); border-right: 1px solid var(--ai-border);
+  overflow-y: auto;
+}
+.ai-sidebar-head { display:flex; align-items:center; justify-content:space-between; padding: 0 8px 10px; }
+.ai-sidebar-kicker,.ai-sidebar-label { color:#7895c2; font-size:11px; font-weight:700; letter-spacing:.12em; }
+.ai-sidebar-title { color:white; font-size:20px; font-weight:750; margin-top:4px; }
+.ai-sidebar-close { display:none; width:38px; height:38px; border-radius:10px; border:1px solid var(--ai-border); background:rgba(13,37,80,.8); color:white; cursor:pointer; }
+.ai-side-btn { width:100%; min-height:50px; display:flex; align-items:center; gap:12px; padding:0 16px; border-radius:13px; border:1px solid rgba(96,165,250,.13); background:rgba(13,37,80,.72); color:#eaf2ff; font-weight:650; font-size: 14px; text-align:left; cursor:pointer; }
+.ai-side-btn:hover { background:rgba(30,64,125,.78); transform:translateY(-1px); }
+.ai-side-primary { background:linear-gradient(135deg,#2563eb,#347cf1); border-color:transparent; box-shadow:0 10px 24px rgba(37,99,235,.20); }
+.ai-side-danger { color:#ffd9df; }
+.ai-side-icon { width:20px; text-align:center; color:#c9dcff; font-size:18px; }
+.ai-chevron { margin-left:auto; color:#8ea8d0; transition:transform .16s ease; }
+.ai-control-toggle.is-open .ai-chevron { transform:rotate(90deg); }
+.ai-controls-panel { padding: 12px; border:1px solid var(--ai-border); border-radius:14px; background:rgba(4,15,34,.86); display:grid; gap:14px; }
+.ai-control-group { display:grid; gap:8px; }
+.ai-control-label { color:#b8c9e5; font-size:12px; font-weight:650; }
+.ai-control-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ai-segmented { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.ai-segmented button { min-height:38px; border-radius:9px; border:1px solid rgba(96,165,250,.14); background:rgba(13,37,80,.65); color:#9fb6db; font-size:11px; font-weight:650; cursor:pointer; }
+.ai-segmented button.active { color:white; background:rgba(37,99,235,.85); border-color:rgba(147,197,253,.32); }
+.ai-switch { width:42px; height:24px; padding:3px; border:0; border-radius:999px; background:#33445f; cursor:pointer; }
+.ai-switch span { display:block; width:18px; height:18px; border-radius:50%; background:#d8e5fa; transition:transform .16s ease; }
+.ai-switch.active { background:#2563eb; }
+.ai-switch.active span { transform:translateX(18px); }
+.ai-source-select { width:64px; height:34px; border-radius:8px; border:1px solid rgba(96,165,250,.18); background:#081a38; color:white; padding:0 8px; }
+.ai-sidebar-divider { height:1px; background:rgba(96,165,250,.10); margin:6px 0; }
+.ai-indexed-box { margin-top:2px; min-height:0; display:flex; flex-direction:column; gap:10px; }
+.ai-indexed-heading { display:flex; justify-content:space-between; align-items:center; }
+.ai-pdf-count { font-style:normal; min-width:24px; height:24px; display:grid; place-items:center; border-radius:999px; background:rgba(37,99,235,.22); color:#cfe0ff; font-size: 12px; }
+.ai-indexed-list { display:grid; gap:8px; overflow:auto; }
+.ai-indexed-item { display:flex; gap:10px; align-items:center; padding:10px; border:1px solid rgba(96,165,250,.10); background:rgba(10,28,61,.62); border-radius:11px; }
+.ai-pdf-icon { display:grid; place-items:center; width:34px; height:38px; border-radius:8px; background:#f1f5f9; color:#dc2626; font-size:9px; font-weight:800; flex: 0 0 auto; }
+.ai-indexed-copy { min-width:0; display:grid; gap:2px; }
+.ai-indexed-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:#f4f8ff; }
+.ai-indexed-copy small { color:#829cc3; font-size:10px; }
+.ai-empty-index { color:#7189ae; font-size:12px; padding:6px 2px; }
+.ai-sidebar-footer { margin-top:auto; color:#6f89b0; font-size:10px; line-height:1.5; padding:10px 8px 0; }
+.ai-sidebar-overlay { display:none; }
+
+@keyframes ai-fade { from {opacity:0; transform:translateY(4px)} to {opacity:1; transform:none} }
+
+@media (max-width: 760px) {
+  :root { --ai-header:64px; }
+  #header.ai-native-header { height:var(--ai-header) !important; min-height:var(--ai-header) !important; }
+  .ai-app-header-inner { padding:0 12px; gap:10px; }
+  .ai-mobile-menu { display:inline-grid; place-items:center; }
+  .ai-brand-logo { width:34px; height:34px; }
+  .ai-brand-copy strong { font-size:15px; }
+  .ai-brand-copy span { display:none; }
+  .ai-header-status { display:none; }
+  main { margin-left:0 !important; }
+  .ai-workspace-sidebar { top:0; width:min(88vw,340px); transform:translateX(-102%); transition:transform .20s ease; box-shadow:18px 0 55px rgba(0,0,0,.35); }
+  .ai-workspace-sidebar.is-open { transform:translateX(0); }
+  .ai-sidebar-close { display:inline-grid; place-items:center; }
+  .ai-sidebar-overlay { position:fixed; inset:0; z-index:2800; background:rgba(0,0,0,.52); backdrop-filter:blur(2px); }
+  .ai-sidebar-overlay.is-open { display:block; }
+  .ai-message { max-width:96vw; }
+  #chat-input { font-size: 16px !important; }
+  .step:has(> img[src*="/avatars/"]),
+  .step *:has(> img[src*="/avatars/"]) {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    min-height: 26px !important;
+    max-width: 26px !important;
+    max-height: 26px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .ai-brand-copy strong { font-size:14px; }
+  .ai-segmented { grid-template-columns:1fr; }
+  .ai-side-btn { min-height:48px; }
+}
