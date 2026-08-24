@@ -60,19 +60,6 @@ import os
 import subprocess
 import streamlit as st
 
-# Trick: Agar yeh Streamlit Cloud par chal raha hai, toh background mein Chainlit ko run karein
-if os.environ.get("STREAMLIT_SERVER_PORT"):
-    # Chainlit ko background process mein port 8501 (Streamlit port) par force run karein
-    subprocess.Popen([
-        "chainlit", "run", "app.py", 
-        "--host", "0.0.0.0", 
-        "--port", "8501", 
-        "--headless"
-    ])
-    st.info("Starting Chainlit UI in the background...")
-    st.stop()
-
-
 # ---------------------------------------------------------------------------
 # Constants (unchanged from the Streamlit app so existing saved indexes /
 # chat history / uploaded PDFs keep working with zero migration).
